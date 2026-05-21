@@ -6,8 +6,7 @@ use iced_anim::{Animated, Event, Motion};
 use iced_layershell::to_layer_message;
 
 use crate::{
-    base::{get_desired_size_base, render_base},
-    launch::{Launch, LaunchMessage},
+    base::{get_desired_size_base, render_base}, color::Colors, launch::{Launch, LaunchMessage}
 };
 
 #[derive(Default)]
@@ -44,6 +43,7 @@ pub struct Bar {
     pub bar_size: Animated<Size<f32>>,
     pub command: String,
     pub now: chrono::DateTime<Local>,
+    pub colors: Colors,
 }
 
 impl Default for Bar {
@@ -57,6 +57,7 @@ impl Default for Bar {
             state,
             command: Default::default(),
             now: chrono::offset::Local::now(),
+            colors: Default::default(),
         }
     }
 }

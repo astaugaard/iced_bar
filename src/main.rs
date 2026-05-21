@@ -14,12 +14,14 @@ use iced_layershell::{
 };
 
 mod base;
+mod color;
 mod launch;
 mod model;
 
 use model::Bar;
 
 use crate::{
+    color::Colors,
     launch::Launch,
     model::{BarState, Message},
 };
@@ -32,7 +34,7 @@ pub fn main() -> Result<(), iced_layershell::Error> {
     };
 
     application(Bar::default, namespace, update, view)
-        .style(style)
+        .style(|a, b| style(a, b, Colors::default()))
         .subscription(subscription)
         .settings(Settings {
             layer_settings: LayerShellSettings {
@@ -116,8 +118,8 @@ fn view(bar: &Bar) -> Element<'_, Message> {
             Animation::new(
                 &bar.bar_size,
                 container(content)
-                    .style(|t: &Theme| container::Style {
-                        background: Some(Background::Color(t.palette().background)),
+                    .style(|_: &Theme| container::Style {
+                        background: Some(Background::Color(bar.colors.background)),
                         border: Border {
                             color: Color::TRANSPARENT,
                             width: 0.0,
@@ -142,10 +144,10 @@ fn view(bar: &Bar) -> Element<'_, Message> {
     .into()
 }
 
-fn style(_counter: &Bar, theme: &iced::Theme) -> iced::theme::Style {
+fn style(_counter: &Bar, _theme: &iced::Theme, colors: Colors) -> iced::theme::Style {
     use iced::theme::Style;
     Style {
         background_color: Color::TRANSPARENT,
-        text_color: theme.palette().text,
+        text_color: colors.foreground,
     }
 }

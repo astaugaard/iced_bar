@@ -7,6 +7,7 @@ pub fn render_base(bar: &Bar) -> Element<'_, Message> {
 
     text(time.to_string())
         .size(25)
+        .color(bar.colors.color1)
         .font(Font::with_name("DejaVu Sans"))
         .into()
 }
