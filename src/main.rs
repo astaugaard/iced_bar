@@ -1,16 +1,27 @@
 use iced::{
-    Alignment, Background, Border, Color, Element, Font,
+    Alignment, Background, Border, Color, Element,
     Length::{self, Fill},
-    Size, Task as Command, Theme,
+    Size, Subscription, Task as Command, Theme,
     border::Radius,
-    widget::{container, mouse_area, operation::focus, text, text_input},
+    time::{self, seconds},
+    widget::{container, mouse_area, operation::focus},
 };
-use iced_anim::{Animated, Animation, Event, Motion};
+use iced_anim::{Animation, Event};
 use iced_layershell::{
     application,
     reexport::{Anchor, KeyboardInteractivity},
     settings::{LayerShellSettings, Settings, StartMode},
-    to_layer_message,
+};
+
+mod base;
+mod launch;
+mod model;
+
+use model::Bar;
+
+use crate::{
+    launch::Launch,
+    model::{BarState, Message},
 };
 
 pub fn main() -> Result<(), iced_layershell::Error> {
@@ -22,7 +33,7 @@ pub fn main() -> Result<(), iced_layershell::Error> {
 
     application(Bar::default, namespace, update, view)
         .style(style)
-        // .subscription(subscription)
+        .subscription(subscription)
         .settings(Settings {
             layer_settings: LayerShellSettings {
                 size: Some((0, 40)),
@@ -37,87 +48,8 @@ pub fn main() -> Result<(), iced_layershell::Error> {
         .run()
 }
 
-#[derive(Default)]
-enum BarState {
-    #[default]
-    Base,
-    Launch {
-        command: String,
-    },
-}
-
-impl BarState {
-    fn get_desired_size(&self) -> Size<f32> {
-        match self {
-            BarState::Base => Size {
-                width: 400.0,
-                height: 40.0,
-            },
-            BarState::Launch { .. } => Size {
-                width: 600.0,
-                height: 500.0,
-            },
-        }
-    }
-
-    fn size_update(&self) -> Command<Message> {
-        let size = self.get_desired_size();
-
-        Command::done(Message::SizeUpdate(Event::Target(size)))
-    }
-
-    fn render(&self) -> Element<'_, Message> {
-        match self {
-            BarState::Base => text("small")
-                .size(25)
-                .font(Font::with_name("DejaVu Sans"))
-                .into(),
-            BarState::Launch { command } => container(
-                text_input("Search", command)
-                    .width(380)
-                    .on_input(Message::CommandChanged)
-                    .id("Command Input"),
-            )
-            .height(Length::Fixed(500.0))
-            .into(),
-        }
-    }
-}
-
-struct Bar {
-    state: BarState,
-
-    opacity: Animated<f32>,
-
-    previous_state: Option<(BarState, Animated<f32>)>,
-
-    bar_size: Animated<Size<f32>>,
-    command: String,
-}
-
-impl Default for Bar {
-    fn default() -> Self {
-        let state = BarState::default();
-
-        let motion = Motion::SMOOTH.quick();
-
-        Self {
-            bar_size: Animated::new(state.get_desired_size(), motion),
-            previous_state: None,
-            state,
-            command: Default::default(),
-            opacity: Animated::new(1.0, motion),
-        }
-    }
-}
-
-#[to_layer_message]
-#[derive(Debug, Clone)]
-enum Message {
-    HoverStart,
-    HoverEnd,
-    SizeUpdate(Event<Size<f32>>),
-    CommandChanged(String),
+fn subscription(_bar: &Bar) -> Subscription<Message> {
+    time::every(seconds(2)).map(|_| Message::Tick(chrono::offset::Local::now()))
 }
 
 fn size_to_window_size(size: Size<f32>) -> (u32, u32) {
@@ -125,21 +57,21 @@ fn size_to_window_size(size: Size<f32>) -> (u32, u32) {
 }
 
 fn namespace() -> String {
-    String::from("Counter - Iced")
+    String::from("Bar - Iced")
 }
 
 fn update(bar: &mut Bar, message: Message) -> Command<Message> {
     match message {
         Message::HoverStart => {
-            bar.state = BarState::Launch {
+            bar.state = BarState::Launch(Launch {
                 command: String::new(),
-            };
+            });
             focus("Command Input").chain(bar.state.size_update())
         }
-        Message::CommandChanged(command) => {
-            bar.command = command;
-            Command::none()
-        }
+        Message::LaunchUpdate(command) => match &mut bar.state {
+            BarState::Launch(launch) => launch.update(command),
+            _ => Command::none(),
+        },
         Message::HoverEnd => {
             bar.state = BarState::Base;
             bar.command.clear();
@@ -165,12 +97,17 @@ fn update(bar: &mut Bar, message: Message) -> Command<Message> {
                 }
             }
         }
+        Message::Tick(now) => {
+            bar.now = now;
+
+            Command::none()
+        }
         _ => Command::none(),
     }
 }
 
 fn view(bar: &Bar) -> Element<'_, Message> {
-    let content = bar.state.render();
+    let content = bar.state.render(bar);
 
     let size = bar.bar_size.value();
 
