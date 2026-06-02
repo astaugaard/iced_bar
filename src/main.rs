@@ -1,8 +1,11 @@
+use std::thread;
+
 use iced::{
     Alignment, Background, Border, Color, Element,
     Length::{self, Fill},
     Size, Subscription, Task as Command, Theme,
     border::Radius,
+    stream,
     time::{self, seconds},
     widget::{container, mouse_area, operation::focus},
 };
@@ -13,12 +16,17 @@ use iced_layershell::{
     settings::{LayerShellSettings, Settings, StartMode},
 };
 
+mod audio_listener;
 mod base;
 mod color;
 mod launch;
 mod model;
 
 use model::Bar;
+use smol::{
+    channel::{Receiver, bounded},
+    future,
+};
 
 use crate::{
     color::Colors,
@@ -38,8 +46,8 @@ pub fn main() -> Result<(), iced_layershell::Error> {
         .subscription(subscription)
         .settings(Settings {
             layer_settings: LayerShellSettings {
-                size: Some((0, 40)),
-                exclusive_zone: 40,
+                size: Some((0, 48)),
+                exclusive_zone: 48,
                 anchor: Anchor::Top | Anchor::Left | Anchor::Right,
                 keyboard_interactivity: KeyboardInteractivity::OnDemand,
                 start_mode,
@@ -51,7 +59,28 @@ pub fn main() -> Result<(), iced_layershell::Error> {
 }
 
 fn subscription(_bar: &Bar) -> Subscription<Message> {
-    time::every(seconds(2)).map(|_| Message::Tick(chrono::offset::Local::now()))
+    Subscription::batch([
+        time::every(seconds(2)).map(|_| Message::Tick(chrono::offset::Local::now())),
+        Subscription::run(|| {
+            stream::channel(8, async |mut output| {
+                thread::spawn(move || {
+                    let local = smol::LocalExecutor::new();
+
+                    future::block_on({
+                        local.run(async {
+                            let (send_commands, commands) = bounded(8);
+
+                            output
+                                .try_send(Message::CommandsChannel(send_commands))
+                                .unwrap();
+
+                            audio_listener::init(output, commands).await;
+                        })
+                    });
+                });
+            })
+        }),
+    ])
 }
 
 fn size_to_window_size(size: Size<f32>) -> (u32, u32) {
@@ -93,7 +122,10 @@ fn update(bar: &mut Bar, message: Message) -> Command<Message> {
                         Command::none()
                     } else {
                         Command::done(Message::SizeChange(size_to_window_size(
-                            *bar.bar_size.value(),
+                            bar.bar_size.value().expand(Size {
+                                width: 8.0,
+                                height: 8.0,
+                            }),
                         )))
                     }
                 }
@@ -101,6 +133,21 @@ fn update(bar: &mut Bar, message: Message) -> Command<Message> {
         }
         Message::Tick(now) => {
             bar.now = now;
+
+            for bat in &mut bar.batteries {
+                bar.manager.refresh(bat).unwrap()
+            }
+
+            Command::none()
+        }
+        Message::NewVolume(volume) => {
+            println!("volume: {}", volume);
+
+            if volume.is_muted() {
+                bar.volume = None;
+            } else {
+                bar.volume = Some(volume.print());
+            }
 
             Command::none()
         }
@@ -121,9 +168,9 @@ fn view(bar: &Bar) -> Element<'_, Message> {
                     .style(|_: &Theme| container::Style {
                         background: Some(Background::Color(bar.colors.background)),
                         border: Border {
-                            color: Color::TRANSPARENT,
-                            width: 0.0,
-                            radius: Radius::new(0).bottom(25),
+                            color: bar.colors.accent,
+                            width: 2.0,
+                            radius: Radius::new(25),
                         },
                         ..Default::default()
                     })

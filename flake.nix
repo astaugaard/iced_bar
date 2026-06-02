@@ -148,6 +148,7 @@
               libxkbcommon
               vulkan-loader
               wayland
+              libpulseaudio
             ];
 
             shellHook = ''

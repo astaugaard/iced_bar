@@ -1,12 +1,18 @@
 use std::fmt::Debug;
 
+use battery::{Battery, Manager};
 use chrono::Local;
 use iced::{Element, Size, Task as Command};
 use iced_anim::{Animated, Event, Motion};
 use iced_layershell::to_layer_message;
+use libpulse_binding::volume::Volume;
+use smol::channel::Sender;
 
 use crate::{
-    base::{get_desired_size_base, render_base}, color::Colors, launch::{Launch, LaunchMessage}
+    audio_listener::AudioCommands,
+    base::{get_desired_size_base, render_base},
+    color::Colors,
+    launch::{Launch, LaunchMessage},
 };
 
 #[derive(Default)]
@@ -22,6 +28,10 @@ impl BarState {
             BarState::Base => get_desired_size_base(),
             BarState::Launch(launch) => launch.get_desired_size(),
         }
+        .expand(Size {
+            width: 8.0,
+            height: 8.0,
+        })
     }
 
     pub fn size_update(&self) -> Command<Message> {
@@ -44,6 +54,10 @@ pub struct Bar {
     pub command: String,
     pub now: chrono::DateTime<Local>,
     pub colors: Colors,
+    pub commands: Option<Sender<AudioCommands>>,
+    pub volume: Option<String>,
+    pub batteries: Vec<Battery>,
+    pub manager: Manager,
 }
 
 impl Default for Bar {
@@ -52,12 +66,24 @@ impl Default for Bar {
 
         let motion = Motion::SMOOTH.quick();
 
+        let manager = battery::Manager::new().unwrap();
+
+        let batteries = manager
+            .batteries()
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
         Self {
             bar_size: Animated::new(state.get_desired_size(), motion),
             state,
             command: Default::default(),
             now: chrono::offset::Local::now(),
             colors: Default::default(),
+            commands: Default::default(),
+            volume: None,
+            batteries,
+            manager,
         }
     }
 }
@@ -70,6 +96,10 @@ pub enum Message {
     SizeUpdate(Event<Size<f32>>),
 
     LaunchUpdate(LaunchMessage),
+
+    NewVolume(Volume),
+
+    CommandsChannel(Sender<AudioCommands>),
 
     Tick(chrono::DateTime<chrono::Local>),
 }

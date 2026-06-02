@@ -1,15 +1,32 @@
-use iced::{Element, Font, Size, widget::text};
+use iced::{
+    Element, Font, Size,
+    widget::{row, space, text},
+};
 
 use crate::model::{Bar, Message};
 
 pub fn render_base(bar: &Bar) -> Element<'_, Message> {
     let time = bar.now.format("%a %b %e %H:%M");
 
-    text(time.to_string())
+    row![
+        text(match &bar.volume {
+            Some(volume) => {
+                volume.clone()
+            }
+            None => {
+                "󰖁".to_string()
+            }
+        })
         .size(25)
-        .color(bar.colors.color1)
-        .font(Font::with_name("DejaVu Sans"))
-        .into()
+        .color(bar.colors.color2)
+        .font(Font::with_name("DejaVu Sans")),
+        space().width(10),
+        text(time.to_string())
+            .size(25)
+            .color(bar.colors.color1)
+            .font(Font::with_name("DejaVu Sans"))
+    ]
+    .into()
 }
 
 pub fn get_desired_size_base() -> Size<f32> {
