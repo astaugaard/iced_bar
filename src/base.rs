@@ -1,5 +1,8 @@
 use iced::{
-    Element, Font, Size,
+    Alignment::Center,
+    Element, Font,
+    Length::Fill,
+    Size,
     widget::{row, space, text},
 };
 
@@ -17,15 +20,12 @@ pub fn render_base(bar: &Bar) -> Element<'_, Message> {
                 "󰖁".to_string()
             }
         })
-        .size(25)
-        .color(bar.colors.color2)
-        .font(Font::with_name("DejaVu Sans")),
+        .color(bar.colors.color2),
         space().width(10),
-        text(time.to_string())
-            .size(25)
-            .color(bar.colors.color1)
-            .font(Font::with_name("DejaVu Sans"))
+        text(time.to_string()).color(bar.colors.color1)
     ]
+    .height(Fill)
+    .align_y(Center)
     .into()
 }
 

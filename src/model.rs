@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use battery::{Battery, Manager};
 use chrono::Local;
-use iced::{Element, Size, Task as Command};
+use iced::{Element, Size, Subscription, Task as Command, keyboard};
 use iced_anim::{Animated, Event, Motion};
 use iced_layershell::to_layer_message;
 use libpulse_binding::volume::Volume;
@@ -13,6 +13,7 @@ use crate::{
     base::{get_desired_size_base, render_base},
     color::Colors,
     launch::{Launch, LaunchMessage},
+    terminal::{TerminalMessage, TerminalState},
 };
 
 #[derive(Default)]
@@ -20,6 +21,7 @@ pub enum BarState {
     #[default]
     Base,
     Launch(Launch),
+    Terminal(TerminalState),
 }
 
 impl BarState {
@@ -27,11 +29,8 @@ impl BarState {
         match self {
             BarState::Base => get_desired_size_base(),
             BarState::Launch(launch) => launch.get_desired_size(),
+            BarState::Terminal(terminal) => terminal.get_desired_size(),
         }
-        .expand(Size {
-            width: 8.0,
-            height: 8.0,
-        })
     }
 
     pub fn size_update(&self) -> Command<Message> {
@@ -43,7 +42,32 @@ impl BarState {
     pub fn render<'a>(&'a self, bar: &'a Bar) -> Element<'a, Message> {
         match self {
             BarState::Base => render_base(bar),
-            BarState::Launch(launch) => launch.render(),
+            BarState::Launch(launch) => launch.render(bar),
+            BarState::Terminal(terminal_state) => terminal_state.render(bar),
+        }
+    }
+
+    pub fn subscriptions(&self) -> Option<Subscription<Message>> {
+        dbg!();
+        match self {
+            BarState::Terminal(terminal_state) => {
+                dbg!("added terminal subscription");
+                Some(
+                    terminal_state
+                        .terminal
+                        .subscription()
+                        .map(|a| Message::TerminalEvent(TerminalMessage::TerminalEvent(a))),
+                )
+            }
+            _ => None,
+        }
+    }
+
+    pub fn key_event(&mut self, key: keyboard::Event) -> Command<Message> {
+        match self {
+            BarState::Base => Command::none(),
+            BarState::Launch(launch) => launch.key_event(key),
+            BarState::Terminal(terminal_state) => Command::none(),
         }
     }
 }
@@ -97,9 +121,15 @@ pub enum Message {
 
     LaunchUpdate(LaunchMessage),
 
+    TerminalEvent(TerminalMessage),
+
     NewVolume(Volume),
 
     CommandsChannel(Sender<AudioCommands>),
+
+    StateChange(fn() -> BarState),
+
+    KeyEvent(keyboard::Event),
 
     Tick(chrono::DateTime<chrono::Local>),
 }

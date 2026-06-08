@@ -1,18 +1,18 @@
 use std::thread;
 
 use iced::{
-    Alignment, Background, Border, Color, Element,
+    Alignment, Background, Border, Color, Element, Font,
     Length::{self, Fill},
     Size, Subscription, Task as Command, Theme,
     border::Radius,
-    stream,
+    keyboard, stream,
     time::{self, seconds},
     widget::{container, mouse_area, operation::focus},
 };
 use iced_anim::{Animation, Event};
 use iced_layershell::{
     application,
-    reexport::{Anchor, KeyboardInteractivity},
+    reexport::{Anchor, KeyboardInteractivity, core::Widget},
     settings::{LayerShellSettings, Settings, StartMode},
 };
 
@@ -21,12 +21,12 @@ mod base;
 mod color;
 mod launch;
 mod model;
+mod terminal;
 
+use iced_term::TerminalView;
+use itertools::chain;
 use model::Bar;
-use smol::{
-    channel::{Receiver, bounded},
-    future,
-};
+use smol::{channel::bounded, future};
 
 use crate::{
     color::Colors,
@@ -53,34 +53,48 @@ pub fn main() -> Result<(), iced_layershell::Error> {
                 start_mode,
                 ..Default::default()
             },
+            antialiasing: true,
+            default_text_size: iced::Pixels(25.0),
+            default_font: Font::with_name("DejaVu Sans"),
             ..Default::default()
         })
         .run()
 }
 
-fn subscription(_bar: &Bar) -> Subscription<Message> {
-    Subscription::batch([
-        time::every(seconds(2)).map(|_| Message::Tick(chrono::offset::Local::now())),
-        Subscription::run(|| {
-            stream::channel(8, async |mut output| {
-                thread::spawn(move || {
-                    let local = smol::LocalExecutor::new();
+fn subscription(bar: &Bar) -> Subscription<Message> {
+    let sub = Subscription::batch(chain!(
+        [
+            time::every(seconds(2)).map(|_| Message::Tick(chrono::offset::Local::now())),
+            keyboard::listen().map(|key_event| Message::KeyEvent(key_event)),
+            Subscription::run(|| {
+                stream::channel(8, async |mut output| {
+                    thread::spawn(move || {
+                        println!("making thingy");
+                        let local = smol::LocalExecutor::new();
 
-                    future::block_on({
-                        local.run(async {
-                            let (send_commands, commands) = bounded(8);
+                        future::block_on({
+                            local.run(async {
+                                let (send_commands, commands) = bounded(8);
 
-                            output
-                                .try_send(Message::CommandsChannel(send_commands))
-                                .unwrap();
+                                output
+                                    .try_send(Message::CommandsChannel(send_commands))
+                                    .unwrap();
 
-                            audio_listener::init(output, commands).await;
-                        })
+                                audio_listener::init(output, commands).await;
+                            })
+                        });
                     });
-                });
-            })
-        }),
-    ])
+
+                    smol::Timer::never().await;
+                })
+            }),
+        ],
+        bar.state.subscriptions()
+    ));
+
+    dbg!("subs");
+
+    sub
 }
 
 fn size_to_window_size(size: Size<f32>) -> (u32, u32) {
@@ -92,15 +106,27 @@ fn namespace() -> String {
 }
 
 fn update(bar: &mut Bar, message: Message) -> Command<Message> {
-    match message {
+    let res = match dbg!(message) {
         Message::HoverStart => {
-            bar.state = BarState::Launch(Launch {
-                command: String::new(),
-            });
-            focus("Command Input").chain(bar.state.size_update())
+            Command::done(Message::StateChange(|| BarState::Launch(Launch::new())))
+        }
+        Message::StateChange(state) => {
+            bar.state = state();
+
+            bar.state.size_update().chain(match &bar.state {
+                BarState::Launch(launch) => focus("Command Input"),
+                BarState::Terminal(terminal_state) => {
+                    TerminalView::focus(terminal_state.terminal.widget_id().clone())
+                }
+                _ => Command::none(),
+            })
         }
         Message::LaunchUpdate(command) => match &mut bar.state {
             BarState::Launch(launch) => launch.update(command),
+            _ => Command::none(),
+        },
+        Message::TerminalEvent(command) => match &mut bar.state {
+            BarState::Terminal(terminal) => terminal.update(command),
             _ => Command::none(),
         },
         Message::HoverEnd => {
@@ -122,10 +148,7 @@ fn update(bar: &mut Bar, message: Message) -> Command<Message> {
                         Command::none()
                     } else {
                         Command::done(Message::SizeChange(size_to_window_size(
-                            bar.bar_size.value().expand(Size {
-                                width: 8.0,
-                                height: 8.0,
-                            }),
+                            bar.bar_size.value().clone(),
                         )))
                     }
                 }
@@ -151,8 +174,19 @@ fn update(bar: &mut Bar, message: Message) -> Command<Message> {
 
             Command::none()
         }
+        Message::KeyEvent(key) => bar.state.key_event(key),
+        Message::CommandsChannel(commands) => {
+            bar.commands = Some(commands);
+
+            Command::none()
+        }
+
         _ => Command::none(),
-    }
+    };
+
+    dbg!();
+
+    res
 }
 
 fn view(bar: &Bar) -> Element<'_, Message> {
@@ -177,7 +211,7 @@ fn view(bar: &Bar) -> Element<'_, Message> {
                     .width(Length::Fixed(size.width))
                     .height(Length::Fixed(size.height))
                     .align_x(Alignment::Center)
-                    .align_y(Alignment::Center),
+                    .align_y(Alignment::Start),
             )
             .on_update(Message::SizeUpdate),
         )

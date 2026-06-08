@@ -18,22 +18,6 @@
         "type": "github"
       }
     },
-    "greetd-stub": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1729101031,
-        "narHash": "sha256-oSW103PFuekgpSKz3ejE9WrGdSeSezdF8P3qQgiSus8=",
-        "owner": "apognu",
-        "repo": "greetd-stub",
-        "rev": "186d4d100893c8dee94d6df3500995589f7f1037",
-        "type": "github"
-      },
-      "original": {
-        "owner": "apognu",
-        "repo": "greetd-stub",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1778869304,
@@ -53,7 +37,6 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "greetd-stub": "greetd-stub",
         "nixpkgs": "nixpkgs"
       }
     },
