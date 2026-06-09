@@ -1,14 +1,12 @@
 use std::{collections::BTreeMap, fmt::Debug};
 
 use iced::{
-    Color, Element, Font, Point, Renderer, Size, Task as Command,
+    Color, Element, Point, Renderer, Size, Task as Command,
     border::{Border, Radius},
     keyboard::{self, Key, key::Named},
-    widget::{Canvas, button, canvas, canvas::Path, column, container, text_input},
+    widget::{canvas, canvas::Path, column, container, text_input},
 };
 use iced_anim::{AnimationBuilder, Motion};
-use iced_layershell::reexport::core::Widget;
-use itertools::chain;
 use once_cell::sync::Lazy;
 
 use crate::{
@@ -16,70 +14,79 @@ use crate::{
     terminal::TerminalState,
 };
 
-static OPTIONS: Lazy<BTreeMap<String, fn() -> BarState>> = Lazy::new(|| {
-    let mut map: BTreeMap<String, fn() -> BarState> = BTreeMap::new();
+static OPTIONS: Lazy<BTreeMap<String, fn(&Bar) -> BarState>> = Lazy::new(|| {
+    let mut map: BTreeMap<String, fn(&Bar) -> BarState> = BTreeMap::new();
 
-    map.insert("Bluetooth".to_string(), || BarState::Base);
-    map.insert("Wifi".to_string(), || {
+    map.insert("Wifi".to_string(), |bar| {
         BarState::Terminal(TerminalState::new(
             "impala",
             Size {
                 width: 800.0,
                 height: 600.0,
             },
+            &bar.colors,
         ))
     });
-    map.insert("Power".to_string(), || BarState::Base);
-    map.insert("Terminal".to_string(), || BarState::Base);
-    map.insert("Launch".to_string(), || BarState::Base);
+    map.insert("Bluetooth".to_string(), |bar| {
+        BarState::Terminal(TerminalState::new(
+            "bluetui",
+            Size {
+                width: 800.0,
+                height: 600.0,
+            },
+            &bar.colors,
+        ))
+    });
+    map.insert("Power".to_string(), |_| BarState::Base);
 
     map
 });
 
 #[derive(Clone, Debug)]
-struct OptionsList<'a> {
-    items: &'a [(String, fn() -> BarState)],
+struct OptionsList<'a, A>
+where
+    A: Iterator<Item = &'a str> + Clone,
+{
+    items: A,
     selector_location: f32,
     foreground: Color,
     background: Color,
     selection: Color,
 }
 
-impl<'a> canvas::Program<Message> for OptionsList<'a> {
+impl<'a, A> canvas::Program<Message> for OptionsList<'a, A>
+where
+    A: Iterator<Item = &'a str> + Clone,
+{
     type State = ();
 
     fn draw(
         &self,
-        state: &(),
+        _state: &(),
         renderer: &Renderer,
-        theme: &iced::Theme,
+        _theme: &iced::Theme,
         bounds: iced::Rectangle,
-        cursor: iced_layershell::reexport::core::mouse::Cursor,
+        _cursor: iced_layershell::reexport::core::mouse::Cursor,
     ) -> Vec<canvas::Geometry<Renderer>> {
         let mut frame = canvas::Frame::new(renderer, bounds.size());
 
-        for ele in self.items.iter().take(7).enumerate().map(|(idx, (_, _))| {
-            Path::rounded_rectangle(
-                Point {
-                    x: 0.0,
-                    y: 55.0 * (idx as f32),
-                },
-                Size {
-                    width: 380.0,
-                    height: 45.0,
-                },
-                Radius::new(25),
-            )
-        }) {
-            frame.fill(&ele, self.background);
-        }
+        for (idx, name) in self.items.clone().take(7).enumerate() {
+            frame.fill(
+                &Path::rounded_rectangle(
+                    Point {
+                        x: 0.0,
+                        y: 55.0 * (idx as f32),
+                    },
+                    Size {
+                        width: 380.0,
+                        height: 45.0,
+                    },
+                    Radius::new(25),
+                ),
+                self.background,
+            );
 
-        for ele in self
-            .items
-            .iter()
-            .take(7)
-            .enumerate()
-            .map(|(idx, (name, _))| canvas::Text {
+            frame.fill_text(canvas::Text {
                 content: name.to_string(),
                 position: Point {
                     x: 10.0,
@@ -90,10 +97,44 @@ impl<'a> canvas::Program<Message> for OptionsList<'a> {
                 align_x: iced::widget::text::Alignment::Left,
                 align_y: iced::alignment::Vertical::Center,
                 ..Default::default()
-            })
-        {
-            frame.fill_text(ele);
+            });
         }
+
+        // for ele in self.items.take(7).enumerate().map(|(idx, _)| {
+        //     Path::rounded_rectangle(
+        //         Point {
+        //             x: 0.0,
+        //             y: 55.0 * (idx as f32),
+        //         },
+        //         Size {
+        //             width: 380.0,
+        //             height: 45.0,
+        //         },
+        //         Radius::new(25),
+        //     )
+        // }) {
+        //     frame.fill(&ele, self.background);
+        // }
+
+        // for ele in self
+        //     .items
+        //     .take(7)
+        //     .enumerate()
+        //     .map(|(idx, name)| canvas::Text {
+        //         content: name.to_string(),
+        //         position: Point {
+        //             x: 10.0,
+        //             y: 55.0 * (idx as f32) + 22.5,
+        //         },
+        //         max_width: 360.0,
+        //         color: self.foreground,
+        //         align_x: iced::widget::text::Alignment::Left,
+        //         align_y: iced::alignment::Vertical::Center,
+        //         ..Default::default()
+        //     })
+        // {
+        //     frame.fill_text(ele);
+        // }
 
         frame.fill(
             &Path::rounded_rectangle(
@@ -117,7 +158,7 @@ impl<'a> canvas::Program<Message> for OptionsList<'a> {
 #[derive(Clone, Debug)]
 pub struct Launch {
     pub command: String,
-    pub current_list: Vec<(String, fn() -> BarState)>,
+    pub current_list: Vec<(String, fn(&Bar) -> BarState)>,
     pub selection: usize,
 }
 
@@ -158,7 +199,7 @@ impl Launch {
             .into(),
             AnimationBuilder::new(self.selection as f32, |location| {
                 canvas(OptionsList {
-                    items: &self.current_list,
+                    items: self.current_list.iter().map(|(a, _)| a.as_str()),
                     selector_location: location,
                     foreground: bar.colors.foreground,
                     background: bar.colors.background2,

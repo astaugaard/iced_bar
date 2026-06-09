@@ -1,6 +1,6 @@
 use iced::{
     Alignment::Center,
-    Element, Font,
+    Element,
     Length::Fill,
     Size,
     widget::{row, space, text},

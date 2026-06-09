@@ -6,7 +6,7 @@ use iced::{Element, Size, Subscription, Task as Command, keyboard};
 use iced_anim::{Animated, Event, Motion};
 use iced_layershell::to_layer_message;
 use libpulse_binding::volume::Volume;
-use smol::channel::Sender;
+use tokio::sync::mpsc::Sender;
 
 use crate::{
     audio_listener::AudioCommands,
@@ -48,10 +48,8 @@ impl BarState {
     }
 
     pub fn subscriptions(&self) -> Option<Subscription<Message>> {
-        dbg!();
         match self {
             BarState::Terminal(terminal_state) => {
-                dbg!("added terminal subscription");
                 Some(
                     terminal_state
                         .terminal
@@ -67,7 +65,7 @@ impl BarState {
         match self {
             BarState::Base => Command::none(),
             BarState::Launch(launch) => launch.key_event(key),
-            BarState::Terminal(terminal_state) => Command::none(),
+            BarState::Terminal(_terminal_state) => Command::none(),
         }
     }
 }
@@ -75,7 +73,6 @@ impl BarState {
 pub struct Bar {
     pub state: BarState,
     pub bar_size: Animated<Size<f32>>,
-    pub command: String,
     pub now: chrono::DateTime<Local>,
     pub colors: Colors,
     pub commands: Option<Sender<AudioCommands>>,
@@ -101,7 +98,6 @@ impl Default for Bar {
         Self {
             bar_size: Animated::new(state.get_desired_size(), motion),
             state,
-            command: Default::default(),
             now: chrono::offset::Local::now(),
             colors: Default::default(),
             commands: Default::default(),
@@ -127,7 +123,7 @@ pub enum Message {
 
     CommandsChannel(Sender<AudioCommands>),
 
-    StateChange(fn() -> BarState),
+    StateChange(fn(&Bar) -> BarState),
 
     KeyEvent(keyboard::Event),
 
