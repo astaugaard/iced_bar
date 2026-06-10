@@ -37,6 +37,16 @@ static OPTIONS: Lazy<BTreeMap<String, fn(&Bar) -> BarState>> = Lazy::new(|| {
             &bar.colors,
         ))
     });
+    map.insert("Calculator".to_string(), |bar| {
+        BarState::Terminal(TerminalState::new(
+            "qalc",
+            Size {
+                width: 800.0,
+                height: 600.0,
+            },
+            &bar.colors,
+        ))
+    });
     map.insert("Power".to_string(), |_| BarState::Base);
 
     map
